@@ -1090,6 +1090,9 @@
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             let voiceActive = false;
             let currentRecognition = null;
+            let recognizing = false;
+            let restartTimer = null;
+            let noResultTimer = null;
             const recognitionLangs = ['en-US'];
             const isSecure = () => (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
             let micPrimed = false;
@@ -1119,9 +1122,17 @@
                 if (!currentRecognition) {
                     currentRecognition = new SpeechRecognition();
                     currentRecognition.lang = 'en-US';
-                    currentRecognition.continuous = true;
+                    currentRecognition.continuous = false; // Android ignores true; we will restart manually
                     currentRecognition.interimResults = false; // rely on final results to reduce conflicts
                     currentRecognition.maxAlternatives = 2;
+                    currentRecognition.onstart = () => {
+                        recognizing = true;
+                        if (noResultTimer) { clearTimeout(noResultTimer); noResultTimer = null; }
+                        // If nothing heard within 5s, restart (Android sometimes stalls)
+                        noResultTimer = setTimeout(() => {
+                            try { currentRecognition.stop(); } catch (_) {}
+                        }, 5000);
+                    };
                     currentRecognition.onresult = (ev) => {
                     // prefer only final result to avoid partial noise
                     const last = ev.results[ev.results.length - 1];
@@ -1131,21 +1142,41 @@
                         highlightFoundNumber(num);
                         try { speak(`Searching ${num}`, 1, 1.2, 'en-US'); } catch (_) {}
                     }
+                        // After a result, stop to trigger a clean restart
+                        try { currentRecognition.stop(); } catch (_) {}
                     };
-                    currentRecognition.onerror = () => {
-                        setTimeout(() => { if (voiceActive) { try { currentRecognition.start(); } catch (_) {} } }, 250);
+                    currentRecognition.onspeechend = () => {
+                        // Speech ended; stop and let onend restart
+                        try { currentRecognition.stop(); } catch (_) {}
+                    };
+                    currentRecognition.onaudioend = () => {
+                        try { currentRecognition.stop(); } catch (_) {}
+                    };
+                    currentRecognition.onsoundend = () => {
+                        try { currentRecognition.stop(); } catch (_) {}
+                    };
+                    currentRecognition.onerror = (e) => {
+                        // Ignore abort; restart others after a brief delay
+                        if (e && e.error === 'aborted') return;
+                        restartTimer && clearTimeout(restartTimer);
+                        restartTimer = setTimeout(() => { if (voiceActive) { try { currentRecognition.start(); } catch (_) {} } }, 400);
                     };
                     currentRecognition.onend = () => {
+                        recognizing = false;
+                        if (noResultTimer) { clearTimeout(noResultTimer); noResultTimer = null; }
                         voiceBtn.classList.toggle('listening', voiceActive);
                         voiceBtn.textContent = voiceActive ? 'Listening…' : 'Voice Search';
                         if (voiceActive) {
-                            setTimeout(() => { try { currentRecognition.start(); } catch (_) {} }, 80);
+                            restartTimer && clearTimeout(restartTimer);
+                            restartTimer = setTimeout(() => { try { currentRecognition.start(); } catch (_) {} }, 350);
                         }
                     };
                 }
                 voiceBtn.classList.add('listening');
                 voiceBtn.textContent = 'Listening…';
-                try { currentRecognition.start(); } catch (_) {}
+                try {
+                    if (!recognizing) currentRecognition.start();
+                } catch (_) {}
             };
             const stopRecognition = () => {
                 voiceActive = false;
