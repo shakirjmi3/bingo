@@ -391,16 +391,7 @@
             0%,100% { filter: brightness(1); }
             50% { filter: brightness(1.15); }
         }
-        /* Voice language select */
-        #voiceLang {
-            margin-left: 6px;
-            padding: 8px 10px;
-            background: var(--bg);
-            color: var(--text);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            font-weight: 600;
-        }
+        /* Voice language select removed */
 
         table {
             width: 100%;
@@ -599,10 +590,6 @@
             </div>
             <button id="shuffleBtn" type="button" aria-label="Shuffle numbers">Shuffle</button>
             <button id="voiceBtn" type="button" aria-label="Voice search number">Voice Search</button>
-            <select id="voiceLang" aria-label="Voice recognition language">
-                <option value="en-US">English</option>
-                <option value="hi-IN">हिन्दी</option>
-            </select>
         </div>
 
         <div class="grid-wrapper">
@@ -1059,7 +1046,6 @@
             });
             // Voice search handler
             const voiceBtn = document.getElementById('voiceBtn');
-            const voiceLangSelect = document.getElementById('voiceLang');
             const highlightFoundNumber = (targetNumber) => {
                 const cells = Array.from(document.querySelectorAll('#grid td'));
                 let found = false;
@@ -1077,24 +1063,17 @@
                 }
                 return found;
             };
-            // Auto-detect EN/HI and run continuously
+            // English-only continuous recognition
             const extractNumberAndLang = (text) => {
                 if (!text) return { num: NaN, lang: null };
                 const normalized = String(text).toLowerCase().trim();
-                const devToAscii = { '०':'0','१':'1','२':'2','३':'3','४':'4','५':'5','६':'6','७':'7','८':'8','९':'9' };
-                const digitsOnly = normalized.replace(/[०-९]/g, ch => devToAscii[ch] || ch).replace(/[^0-9]/g, '');
+                const digitsOnly = normalized.replace(/[^0-9]/g, '');
                 const direct = parseInt(digitsOnly, 10);
                 if (!Number.isNaN(direct)) return { num: direct, lang: 'digits' };
                 const enMap = {
                     zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
                     ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19,
                     twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90, hundred:100
-                };
-                const hiMap = {
-                    'शून्य':0,'सिफर':0,'ज़ीरो':0,'जीरो':0,
-                    'एक':1,'दो':2,'तीन':3,'चार':4,'पांच':5,'पाँच':5,'छह':6,'सात':7,'आठ':8,'नौ':9,
-                    'दस':10,'ग्यारह':11,'बारह':12,'तेरह':13,'चौदह':14,'पंद्रह':15,'सोलह':16,'सत्रह':17,'अठारह':18,'उन्नीस':19,
-                    'बीस':20,'तीस':30,'चालीस':40,'पचास':50,'साठ':60,'सत्तर':70,'अस्सी':80,'नब्बे':90,'सौ':100
                 };
                 const words = normalized.split(/\s+|-/);
                 // Try English
@@ -1105,21 +1084,13 @@
                 }
                 sum += last;
                 if (matched) return { num: sum, lang: 'en' };
-                // Try Hindi
-                sum = 0; last = 0; matched = false;
-                for (const w of words) {
-                    if (w === 'सौ') { if (last === 0) last = 1; last *= 100; matched = true; continue; }
-                    if (hiMap[w] != null) { last += hiMap[w]; matched = true; continue; }
-                }
-                sum += last;
-                if (matched) return { num: sum, lang: 'hi' };
                 return { num: NaN, lang: null };
             };
 
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             let voiceActive = false;
             let currentRecognition = null;
-            const recognitionLangs = ['en-US', 'hi-IN'];
+            const recognitionLangs = ['en-US'];
             const isSecure = () => (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:');
             let micPrimed = false;
             const queryMicPermission = async () => {
@@ -1149,19 +1120,22 @@
                 if (!voiceActive) return;
                 const sr = new SpeechRecognition();
                 currentRecognition = sr;
-                const lang = recognitionLangs[langIdx] || 'en-US';
+                const lang = 'en-US';
                 sr.lang = lang;
                 sr.continuous = true;
-                sr.interimResults = true;
+                sr.interimResults = false; // rely on final results to reduce conflicts
                 sr.maxAlternatives = 3;
                 voiceBtn.classList.add('listening');
                 voiceBtn.textContent = 'Listening…';
                 try { sr.start(); } catch (_) {}
                 sr.onresult = (ev) => {
-                    const transcript = Array.from(ev.results).map(r => r[0].transcript).join(' ').trim();
+                    // prefer only final result to avoid partial noise
+                    const last = ev.results[ev.results.length - 1];
+                    const transcript = last && last.isFinal ? last[0].transcript.trim() : '';
                     const { num, lang: detected } = extractNumberAndLang(transcript);
                     if (!Number.isNaN(num)) {
                         highlightFoundNumber(num);
+                        try { speak(`Searching ${num}`, 1, 1.2, 'en-US'); } catch (_) {}
                     }
                 };
                 sr.onerror = () => {
@@ -1181,7 +1155,6 @@
                 try { if (currentRecognition) currentRecognition.stop(); } catch (_) {}
                 voiceBtn.classList.remove('listening');
                 voiceBtn.textContent = 'Voice Search';
-                if (voiceLangSelect) { voiceLangSelect.disabled = false; voiceLangSelect.title = ''; }
             };
             const toggleVoiceSearch = () => {
                 if (!SpeechRecognition) {
@@ -1203,7 +1176,6 @@
                             return;
                         }
                         voiceActive = true;
-                        if (voiceLangSelect) { voiceLangSelect.disabled = true; voiceLangSelect.title = 'Language auto-detected (English/Hindi)'; }
                         beginRecognition(0);
                     });
                 }
