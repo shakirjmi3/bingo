@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BINGO</title>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --bg-rgb: 255, 255, 255;
+            --card: #f8fafc;
+            --text: #000000;
+            --muted: #444444;
+            --accent: #22c55e;
+            --accent-dark: #16a34a;
+            --accent-rgb: 34, 197, 94;
+            --accent-shadow: rgba(34, 197, 94, 0.35);
+            --border: #000000;
+        }
+
+        /* Light/Dark themes */
+        body.theme-light {
+            --bg: #ffffff;
+            --bg-rgb: 255, 255, 255;
+            --text: #000000;
+            --muted: #444444;
+            --border: #000000;
+        }
+
+        body.theme-dark {
+            --bg: #000000;
+            --bg-rgb: 0, 0, 0;
+            --text: #ffffff;
+            --muted: #cbd5e1;
+            --border: #ffffff;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+
+        .card {
+            width: 100%;
+            max-width: 560px;
+            background: linear-gradient(180deg, rgba(var(--bg-rgb), 0.08), rgba(var(--bg-rgb), 0.04));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+            letter-spacing: 0.2px;
+        }
+
+        .subtext {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .controls label {
+            font-size: 12px;
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .controls input[type="number"] {
+            width: 80px;
+            padding: 6px 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .score {
+            margin-top: 8px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .score small {
+            color: var(--muted);
+            font-weight: 500;
+        }
+
+        .score span {
+            color: #ff0000;
+        }
+
+        body.theme-dark .score span {
+            color: #ff0000;
+        }
+
+        /* When red-ish background selected, switch score color for contrast */
+        body.red-bg .score span {
+            color: #ffffff;
+        }
+
+        /* Overlay to draw completion lines */
+        .grid-wrapper {
+            position: relative;
+        }
+
+        .lines-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .line {
+            position: absolute;
+            background: rgba(255, 0, 0, 0.7); /* soft red */
+            height: 4px;
+            border-radius: 2px;
+            box-shadow: 0 0 0 1px rgba(255, 0, 0, 0.5);
+        }
+
+        /* Celebration overlay */
+        .celebrate-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: clamp(72px, 14vw, 180px);
+            color: rgb(var(--accent-rgb));
+            text-shadow: 0 2px 0 #fff, 0 0 24px rgba(var(--accent-rgb), 0.6);
+            opacity: 0;
+            transform: scale(0.9) rotate(-2deg);
+            transition: opacity 180ms ease;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        .celebrate-overlay.show {
+            opacity: 1;
+            animation: pop-in 900ms ease-out 1, pulse-glow 1200ms ease-in-out 2;
+        }
+
+        /* Disable clicks on grid when celebrating (BINGO achieved) */
+        .card.celebrate table {
+            pointer-events: none;
+        }
+
+        /* Confetti */
+        .confetti-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 4;
+            overflow: hidden;
+        }
+
+        .confetti {
+            position: absolute;
+            width: 12px;
+            height: 18px;
+            background: hsl(var(--h, 0), 90%, 55%);
+            opacity: 0.98;
+            left: calc(50% + var(--x0, 0%));
+            top: calc(40% + var(--y0, -12%));
+            transform: rotate(var(--rot, 0deg));
+            border-radius: 2px;
+            animation: confetti-pop-fall var(--dur, 3400ms) cubic-bezier(.18,.67,.24,1) forwards;
+        }
+
+        @keyframes confetti-pop-fall {
+            0% {
+                transform: scale(1.8) rotate(var(--rot, 0deg));
+            }
+            20% {
+                transform: scale(1) rotate(calc(var(--rot, 0deg) + 90deg));
+            }
+            100% {
+                top: 120%;
+                left: calc(50% + var(--xEnd, 0%));
+                transform: scale(1) rotate(calc(var(--rot, 0deg) + 720deg));
+                opacity: 0.9;
+            }
+        }
+
+        .celebrate-overlay::before,
+        .celebrate-overlay::after {
+            content: "";
+            position: absolute;
+            left: -10%;
+            width: 120%;
+            height: 18px;
+            border-radius: 12px;
+            background: repeating-linear-gradient(90deg,
+                    #22c55e 0 24px,
+                    #10b981 24px 48px,
+                    #f59e0b 48px 72px,
+                    #ef4444 72px 96px,
+                    #3b82f6 96px 120px);
+            filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.25));
+            opacity: 0;
+            transition: opacity 180ms ease;
+            animation: ribbon-slide 1500ms linear infinite;
+        }
+
+        .celebrate-overlay::before {
+            top: 32%;
+            transform: rotate(22deg);
+        }
+
+        .celebrate-overlay::after {
+            top: 68%;
+            transform: rotate(-22deg);
+        }
+
+        .celebrate-overlay.show::before,
+        .celebrate-overlay.show::after {
+            opacity: 0.95;
+        }
+
+        @keyframes ribbon-slide {
+            from {
+                background-position: 0 0;
+            }
+
+            to {
+                background-position: 200px 0;
+            }
+        }
+
+        /* Disable ribbons */
+        .celebrate-overlay::before,
+        .celebrate-overlay::after {
+            display: none !important;
+            content: none !important;
+        }
+
+        @keyframes pop-in {
+            0% {
+                transform: scale(0.6) rotate(-8deg);
+            }
+
+            50% {
+                transform: scale(1.08) rotate(2deg);
+            }
+
+            100% {
+                transform: scale(1) rotate(0);
+            }
+        }
+
+        @keyframes pulse-glow {
+
+            0%,
+            100% {
+                text-shadow: 0 2px 0 #fff, 0 0 10px rgba(34, 197, 94, 0.5);
+            }
+
+            50% {
+                text-shadow: 0 2px 0 #fff, 0 0 28px rgba(34, 197, 94, 0.9);
+            }
+        }
+
+        .card.celebrate {
+            animation: card-glow 900ms ease-in-out 2;
+        }
+
+        @keyframes card-glow {
+
+            0%,
+            100% {
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            }
+
+            50% {
+                box-shadow: 0 16px 40px rgba(var(--accent-rgb), 0.35), 0 0 0 4px rgba(var(--accent-rgb), 0.2);
+            }
+        }
+
+        button {
+            appearance: none;
+            background: linear-gradient(180deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.12));
+            border: 1px solid rgba(34, 197, 94, 0.35);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.06s ease, filter 0.2s ease;
+        }
+
+        button:hover {
+            filter: brightness(1.1);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        /* Make Shuffle prominent */
+        #shuffleBtn {
+            background: linear-gradient(180deg, rgb(var(--accent-rgb)) 0%, rgba(var(--accent-rgb), 0.85) 100%);
+            border: 2px solid rgba(var(--accent-rgb), 0.9);
+            color: #ffffff;
+            padding: 12px 18px;
+            font-size: 16px;
+            border-radius: 12px;
+            box-shadow: 0 6px 14px rgba(var(--accent-rgb), 0.35);
+            transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease;
+            letter-spacing: 0.3px;
+        }
+
+        #shuffleBtn:hover {
+            filter: none;
+            transform: translateY(-1px);
+            box-shadow: 0 10px 18px rgba(var(--accent-rgb), 0.45);
+        }
+
+        #shuffleBtn:active {
+            transform: translateY(0);
+            box-shadow: 0 4px 10px rgba(var(--accent-rgb), 0.30);
+        }
+
+        /* Alternate style if background is in green family */
+        body.green-bg #shuffleBtn {
+            background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+            border-color: #2563eb;
+            box-shadow: 0 6px 14px rgba(59, 130, 246, 0.35);
+        }
+        body.green-bg #shuffleBtn:hover {
+            box-shadow: 0 10px 18px rgba(59, 130, 246, 0.45);
+        }
+        body.green-bg #shuffleBtn:active {
+            box-shadow: 0 4px 10px rgba(59, 130, 246, 0.30);
+        }
+
+        /* Voice Search button */
+        #voiceBtn {
+            margin-left: 8px;
+            background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+            border: 2px solid #2563eb;
+            color: #ffffff;
+            padding: 10px 14px;
+            font-size: 14px;
+            border-radius: 12px;
+            box-shadow: 0 6px 14px rgba(59, 130, 246, 0.35);
+            letter-spacing: 0.2px;
+        }
+        #voiceBtn:hover { box-shadow: 0 10px 18px rgba(59, 130, 246, 0.45); }
+        #voiceBtn:active { box-shadow: 0 4px 10px rgba(59, 130, 246, 0.30); }
+        #voiceBtn.listening {
+            background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+            border-color: #d97706;
+            box-shadow: 0 6px 14px rgba(245, 158, 11, 0.35);
+            animation: listening-pulse 1.1s ease-in-out infinite;
+        }
+        @keyframes listening-pulse {
+            0%,100% { filter: brightness(1); }
+            50% { filter: brightness(1.15); }
+        }
+        /* Voice language select */
+        #voiceLang {
+            margin-left: 6px;
+            padding: 8px 10px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-weight: 600;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            background: var(--bg);
+            border: 2px solid var(--border);
+            outline: 2px solid var(--border);
+        }
+
+        td {
+            border: 1px solid var(--border);
+            padding: 18px 0;
+            text-align: center;
+            font-weight: 700;
+            font-size: 36px;
+            letter-spacing: 0.3px;
+            cursor: pointer;
+            user-select: none;
+            color: var(--numbers-color, var(--text));
+        }
+
+        /* Found highlight */
+        td.found {
+            box-shadow: inset 0 0 0 3px rgba(59, 130, 246, 0.75);
+            animation: found-pulse 900ms ease-in-out 2;
+        }
+        @keyframes found-pulse {
+            0%, 100% { background-color: rgba(59,130,246,0.12); }
+            50% { background-color: rgba(59,130,246,0.26); }
+        }
+
+        td.crossed {
+            text-decoration: line-through;
+            color: #888888;
+        }
+
+        tr:nth-child(odd) td:nth-child(odd),
+        tr:nth-child(even) td:nth-child(even) {
+            background: var(--bg);
+        }
+
+        .footer {
+            color: var(--muted);
+            font-size: 12px;
+            text-align: center;
+            margin-top: 12px;
+        }
+
+        /* Removed slider/swatches styles */
+
+        /* Confirm Modal */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-backdrop.show {
+            display: flex;
+        }
+
+        .modal {
+            width: calc(100% - 40px);
+            max-width: 420px;
+            background: linear-gradient(180deg, rgba(var(--bg-rgb), 0.96), rgba(var(--bg-rgb), 0.92));
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0,0,0,0.05) inset;
+            padding: 16px;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .modal-message {
+            color: var(--muted);
+            margin-bottom: 16px;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.26), rgba(var(--accent-rgb), 0.12));
+            border: 1px solid rgba(var(--accent-rgb), 0.45);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 8px;
+        }
+        
+        /* Crossed numbers panel */
+        .crossed-panel {
+            margin-top: 12px;
+            border-top: 1px dashed var(--border);
+            padding-top: 12px;
+        }
+        .crossed-header {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+        .crossed-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .crossed-list .chip {
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            font-size: 14px;
+            background: var(--bg);
+            color: var(--text);
+            box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+        }
+        /* Bigger count and highlight last chip */
+        #crossedCount {
+            font-size: 18px;
+            font-weight: 800;
+        }
+        .crossed-list .chip.last {
+            background: linear-gradient(180deg, rgba(255, 0, 0, 0.26), rgba(255, 0, 0, 0.12));
+            border-color: rgba(255, 0, 0, 0.7);
+            box-shadow: 0 2px 8px rgba(255, 0, 0, 0.25);
+            animation: chip-blink 1.1s ease-in-out infinite;
+        }
+        @keyframes chip-blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card" role="region" aria-labelledby="grid-title">
+        <div class="header">
+            <div>
+                <h1 id="grid-title">Random Numbers Grid</h1>
+                <div class="subtext" id="grid-subtext">Enter a size and press Shuffle</div>
+                <div class="controls">
+                    <label for="sizeInput">Size (N):</label>
+                    <input id="sizeInput" type="number" min="1" value="5" aria-label="Grid size" />
+                    <label for="bgSelect">Background:</label>
+                    <select id="bgSelect" aria-label="Background color">
+                        <option value="#ffffff">White</option>
+                        <option value="#000000">Black</option>
+                        <option value="#808080">Grey</option>
+                        <option value="#ef4444">Red</option>
+                        <option value="#f97316">Orange</option>
+                        <option value="#f59e0b">Amber</option>
+                        <option value="#facc15">Yellow</option>
+                        <option value="#22c55e">Green</option>
+                        <option value="#14b8a6">Teal</option>
+                        <option value="#06b6d4">Cyan</option>
+                        <option value="#3b82f6">Blue</option>
+                        <option value="#6366f1">Indigo</option>
+                        <option value="#8b5cf6">Violet</option>
+                        <option value="#a855f7">Purple</option>
+                        <option value="#ec4899">Pink</option>
+                        <option value="#f43f5e">Rose</option>
+                        <option value="#8b4513">Brown</option>
+                        <option value="#001f3f">Navy</option>
+                        <option value="#556b2f">Olive</option>
+                        <option value="#ffd700">Gold</option>
+                        <option value="#c0c0c0">Silver</option>
+                        <option value="#f5f5dc">Beige</option>
+                    </select>
+                </div>
+                <div class="score" aria-live="polite">
+                    Score: <span id="scoreTotal">0</span>
+                    <small>(Rows: <span id="scoreRows">0</span> | Cols: <span id="scoreCols">0</span> | Diags: <span
+                            id="scoreDiags">0</span>)</small>
+                </div>
+            </div>
+            <button id="shuffleBtn" type="button" aria-label="Shuffle numbers">Shuffle</button>
+            <button id="voiceBtn" type="button" aria-label="Voice search number">Voice Search</button>
+            <select id="voiceLang" aria-label="Voice recognition language">
+                <option value="en-US">English</option>
+                <option value="hi-IN">हिन्दी</option>
+            </select>
+        </div>
+
+        <div class="grid-wrapper">
+            <div id="linesLayer" class="lines-layer" aria-hidden="true"></div>
+            <table id="grid" aria-label="5 by 5 grid of random numbers"></table>
+            <div id="celebrate" class="celebrate-overlay" aria-hidden="true">BINGO!</div>
+            <div id="confetti" class="confetti-layer" aria-hidden="true"></div>
+        </div>
+
+        <div id="crossedPanel" class="crossed-panel" aria-live="polite">
+            <div class="crossed-header">Crossed: <span id="crossedCount">0</span></div>
+            <div id="crossedList" class="crossed-list" role="list"></div>
+        </div>
+
+        <div class="footer">Click Shuffle to generate a new grid.</div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="confirmBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="modal" role="document">
+            <div id="confirmTitle" class="modal-title">Confirm</div>
+            <div id="confirmMessage" class="modal-message">Are you sure?</div>
+            <div class="modal-actions">
+                <button id="confirmCancel" type="button" class="btn-outline" aria-label="Cancel">Cancel</button>
+                <button id="confirmOk" type="button" class="btn-primary" aria-label="Confirm">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let hasCelebrated = false;
+        let preferredVoice = null;
+        let isLocked = false; // prevent further clicks after BINGO
+        let currentSize = 5; // track current grid size
+        let crossedSequence = []; // track crossed numbers in order
+
+        function updateCrossedPanelUI() {
+            const listEl = document.getElementById('crossedList');
+            const countEl = document.getElementById('crossedCount');
+            if (countEl) countEl.textContent = String(crossedSequence.length);
+            if (!listEl) return;
+            listEl.innerHTML = '';
+            for (let i = crossedSequence.length - 1; i >= 0; i -= 1) {
+                const num = crossedSequence[i];
+                const chip = document.createElement('div');
+                chip.className = 'chip';
+                chip.setAttribute('role', 'listitem');
+                chip.textContent = String(num);
+                if (i === crossedSequence.length - 1) chip.classList.add('last');
+                listEl.appendChild(chip);
+            }
+        }
+
+        function addCrossedNumber(numberValue) {
+            if (!crossedSequence.includes(numberValue)) {
+                crossedSequence.push(numberValue);
+                updateCrossedPanelUI();
+            }
+        }
+
+        function removeCrossedNumber(numberValue) {
+            const idx = crossedSequence.indexOf(numberValue);
+            if (idx !== -1) {
+                crossedSequence.splice(idx, 1);
+                updateCrossedPanelUI();
+            }
+        }
+
+        function toggleCrossed(cellElement) {
+            const numberValue = parseInt(cellElement.textContent, 10);
+            const wasCrossed = cellElement.classList.contains('crossed');
+            if (wasCrossed) {
+                cellElement.classList.remove('crossed');
+                removeCrossedNumber(numberValue);
+            } else {
+                cellElement.classList.add('crossed');
+                addCrossedNumber(numberValue);
+            }
+            updateCompletedLines();
+        }
+
+        function initVoices() {
+            try {
+                const synth = window.speechSynthesis;
+                if (!synth) return;
+                const voices = synth.getVoices ? synth.getVoices() : [];
+                if (!voices || voices.length === 0) return;
+                const preferenceOrder = [
+                    (v) => v.name && v.name.includes('Google US English'),
+                    (v) => v.name && v.name.includes('Microsoft'),
+                    (v) => v.lang === 'en-US',
+                    (v) => v.lang && v.lang.startsWith('en'),
+                ];
+                for (const matcher of preferenceOrder) {
+                    const found = voices.find(matcher);
+                    if (found) { preferredVoice = found; break; }
+                }
+                if (!preferredVoice) preferredVoice = voices[0];
+            } catch (_) { /* no-op */ }
+        }
+        function createSequentialNumbers(minInclusive, maxInclusive) {
+            const numbers = [];
+            for (let value = minInclusive; value <= maxInclusive; value += 1) {
+                numbers.push(value);
+            }
+            return numbers;
+        }
+
+        function shuffleInPlace(values) {
+            for (let i = values.length - 1; i > 0; i -= 1) {
+                const j = Math.floor(Math.random() * (i + 1));
+                const temp = values[i];
+                values[i] = values[j];
+                values[j] = temp;
+            }
+            return values;
+        }
+
+        function renderGrid(tableEl, numbers, size) {
+            const tbody = document.createElement('tbody');
+            let index = 0;
+            for (let rowIdx = 0; rowIdx < size; rowIdx += 1) {
+                const row = document.createElement('tr');
+                for (let colIdx = 0; colIdx < size; colIdx += 1) {
+                    const cell = document.createElement('td');
+                    cell.textContent = String(numbers[index]);
+                    cell.addEventListener('click', () => {
+                        if (isLocked) {
+                            if (window.openConfirmModal) {
+                                window.openConfirmModal(
+                                    'BINGO completed',
+                                    'Do you want to change this selection? This may affect BINGO status.',
+                                    () => { toggleCrossed(cell); },
+                                    null
+                                );
+                            }
+                            return;
+                        }
+                        toggleCrossed(cell);
+                    });
+                    row.appendChild(cell);
+                    index += 1;
+                }
+                tbody.appendChild(row);
+            }
+            tableEl.innerHTML = '';
+            tableEl.appendChild(tbody);
+            updateCompletedLines();
+            updateCrossedPanelUI();
+        }
+
+        function getGridMetrics() {
+            const table = document.getElementById('grid');
+            const wrapper = table.parentElement;
+            const rows = Array.from(table.querySelectorAll('tr'));
+            const size = rows.length;
+            const wrapperRect = wrapper.getBoundingClientRect();
+            let cellWidth = 0;
+            let cellHeight = 0;
+            if (size > 0) {
+                const firstCell = rows[0].children[0];
+                const cellRect = firstCell.getBoundingClientRect();
+                cellWidth = cellRect.width;
+                cellHeight = cellRect.height;
+            }
+            return { wrapper, size, width: wrapperRect.width, height: wrapperRect.height, cellWidth, cellHeight };
+        }
+
+        function clearLines() {
+            const layer = document.getElementById('linesLayer');
+            if (layer) layer.innerHTML = '';
+        }
+
+        function drawRowLine(rowIndexZeroBased) {
+            const { wrapper, width, size, cellHeight } = getGridMetrics();
+            if (size === 0) return;
+            const y = (rowIndexZeroBased + 0.5) * cellHeight;
+            const line = document.createElement('div');
+            line.className = 'line';
+            line.style.left = '0px';
+            line.style.top = `${y - 2}px`;
+            line.style.width = `${width}px`;
+            line.style.height = '4px';
+            wrapper.querySelector('#linesLayer').appendChild(line);
+        }
+
+        function drawColLine(colIndexZeroBased) {
+            const { wrapper, height, size, cellWidth } = getGridMetrics();
+            if (size === 0) return;
+            const x = (colIndexZeroBased + 0.5) * cellWidth;
+            const line = document.createElement('div');
+            line.className = 'line';
+            line.style.left = `${x - 2}px`;
+            line.style.top = '0px';
+            line.style.width = '4px';
+            line.style.height = `${height}px`;
+            wrapper.querySelector('#linesLayer').appendChild(line);
+        }
+
+        function drawMainDiagonal() {
+            const { wrapper, width, height } = getGridMetrics();
+            const length = Math.hypot(width, height);
+            const angleDeg = Math.atan2(height, width) * (180 / Math.PI);
+            const line = document.createElement('div');
+            line.className = 'line';
+            line.style.left = '50%';
+            line.style.top = '50%';
+            line.style.width = `${length}px`;
+            line.style.transform = `translate(-50%, -50%) rotate(${angleDeg}deg)`;
+            wrapper.querySelector('#linesLayer').appendChild(line);
+        }
+
+        function drawAntiDiagonal() {
+            const { wrapper, width, height } = getGridMetrics();
+            const length = Math.hypot(width, height);
+            const angleDeg = -Math.atan2(height, width) * (180 / Math.PI);
+            const line = document.createElement('div');
+            line.className = 'line';
+            line.style.left = '50%';
+            line.style.top = '50%';
+            line.style.width = `${length}px`;
+            line.style.transform = `translate(-50%, -50%) rotate(${angleDeg}deg)`;
+            wrapper.querySelector('#linesLayer').appendChild(line);
+        }
+
+        function updateCompletedLines() {
+            clearLines();
+            const table = document.getElementById('grid');
+            const rows = Array.from(table.querySelectorAll('tr'));
+            const size = rows.length;
+            if (size === 0) return;
+            const grid = rows.map((tr) => Array.from(tr.children));
+            // Rows
+            let rowsCompleted = 0;
+            for (let r = 0; r < size; r += 1) {
+                const rowDone = grid[r].every((td) => td.classList.contains('crossed'));
+                if (rowDone) { rowsCompleted += 1; drawRowLine(r); }
+            }
+            // Columns
+            let colsCompleted = 0;
+            for (let c = 0; c < size; c += 1) {
+                let colDone = true;
+                for (let r = 0; r < size; r += 1) {
+                    if (!grid[r][c].classList.contains('crossed')) { colDone = false; break; }
+                }
+                if (colDone) { colsCompleted += 1; drawColLine(c); }
+            }
+            // Diagonals
+            let mainDiagDone = true;
+            let antiDiagDone = true;
+            for (let i = 0; i < size; i += 1) {
+                if (!grid[i][i].classList.contains('crossed')) mainDiagDone = false;
+                if (!grid[i][size - 1 - i].classList.contains('crossed')) antiDiagDone = false;
+            }
+            let diagsCompleted = 0;
+            if (mainDiagDone) { diagsCompleted += 1; drawMainDiagonal(); }
+            if (antiDiagDone) { diagsCompleted += 1; drawAntiDiagonal(); }
+
+            const total = rowsCompleted + colsCompleted + diagsCompleted;
+            const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val); };
+            setText('scoreTotal', total);
+            setText('scoreRows', rowsCompleted);
+            setText('scoreCols', colsCompleted);
+            setText('scoreDiags', diagsCompleted);
+
+            // Celebrate when total equals N (size)
+            const overlay = document.getElementById('celebrate');
+            const card = document.querySelector('.card');
+            if (overlay && card) {
+                if (total >= size) {
+                    overlay.classList.add('show');
+                    card.classList.add('celebrate');
+                    isLocked = true;
+                    if (!hasCelebrated) {
+                        playBingoSound();
+                        launchConfetti();
+                        hasCelebrated = true;
+                    }
+                } else {
+                    overlay.classList.remove('show');
+                    card.classList.remove('celebrate');
+                    isLocked = false;
+                    hasCelebrated = false;
+                }
+            }
+        }
+
+        // Simple chime using Web Audio API
+        function playChime() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const now = ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+                notes.forEach((freq, idx) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0, now + idx * 0.12);
+                    gain.gain.linearRampToValueAtTime(0.6, now + idx * 0.12 + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.35);
+                    osc.connect(gain).connect(ctx.destination);
+                    osc.start(now + idx * 0.12);
+                    osc.stop(now + idx * 0.12 + 0.4);
+                });
+            } catch (e) {
+                // ignore audio errors
+            }
+        }
+
+        function speak(text, rate, pitch, langOverride) {
+            try {
+                const synth = window.speechSynthesis;
+                if (!synth) return;
+                const u = new SpeechSynthesisUtterance(text);
+                u.lang = langOverride || 'en-US';
+                try {
+                    const voices = synth.getVoices ? synth.getVoices() : [];
+                    if (langOverride) {
+                        const match = voices.find(v => v.lang === langOverride) || voices.find(v => v.lang && v.lang.startsWith(langOverride.split('-')[0]));
+                        if (match) u.voice = match;
+                    } else if (preferredVoice) {
+                        u.voice = preferredVoice;
+                    }
+                } catch (_) { /* ignore */ }
+                u.rate = rate;
+                u.pitch = pitch;
+                u.volume = 1.0;
+                synth.speak(u);
+            } catch (_) { /* ignore */ }
+        }
+
+        function playBingoSound() {
+            try {
+                if ('speechSynthesis' in window) {
+                    // Initialize voices if not ready yet
+                    initVoices();
+                    // Energetic two-part cheer: say Hurray first, then Bingo
+                    speak('Hurray!', 1.2, 1.6);
+                    setTimeout(() => speak('Bingo!', 1.15, 1.5), 300);
+                    // Light chime layered shortly after
+                    setTimeout(() => playChime(), 120);
+                } else {
+                    playChime();
+                }
+            } catch (e) {
+                playChime();
+            }
+        }
+
+        function launchConfetti() {
+            const layer = document.getElementById('confetti');
+            if (!layer) return;
+            layer.innerHTML = '';
+            const pieces = 140;
+            const colors = [0, 30, 60, 120, 180, 210, 260, 300];
+            for (let i = 0; i < pieces; i += 1) {
+                const el = document.createElement('div');
+                el.className = 'confetti';
+                // Start near the BINGO! text (center) then fall outward
+                const x0 = (Math.random() - 0.5) * 36; // -18%..18%
+                const y0 = (Math.random() - 0.5) * 6; // -3%..3%
+                const xEnd = (Math.random() - 0.5) * 100; // drift outwards
+                el.style.setProperty('--x0', `${x0}%`);
+                el.style.setProperty('--y0', `${y0}%`);
+                el.style.setProperty('--xEnd', `${xEnd}%`);
+                el.style.setProperty('--rot', `${Math.random() * 360}deg`);
+                el.style.setProperty('--dur', `${3000 + Math.random() * 1800}ms`);
+                const hue = colors[i % colors.length] + Math.floor(Math.random() * 20 - 10);
+                el.style.setProperty('--h', String((hue + 360) % 360));
+                layer.appendChild(el);
+            }
+            // auto-clear after animation
+            setTimeout(() => { if (layer) layer.innerHTML = ''; }, 4200);
+        }
+
+        function getSizeFromInput() {
+            const inputEl = document.getElementById('sizeInput');
+            const parsed = parseInt(inputEl.value, 10);
+            if (Number.isNaN(parsed) || parsed < 1) return 5;
+            return parsed;
+        }
+
+        function generateAndDisplay() {
+            const size = getSizeFromInput();
+            const numbers = shuffleInPlace(createSequentialNumbers(1, size * size));
+            const table = document.getElementById('grid');
+            renderGrid(table, numbers, size);
+            const titleEl = document.getElementById('grid-title');
+            const subtextEl = document.getElementById('grid-subtext');
+            if (titleEl) titleEl.textContent = `${size}×${size} BINGO`;
+            if (subtextEl) subtextEl.textContent = `Numbers 1–${size * size}`;
+            clearLines();
+            // reset celebration and scores
+            const overlay = document.getElementById('celebrate');
+            if (overlay) overlay.classList.remove('show');
+            const card = document.querySelector('.card');
+            if (card) card.classList.remove('celebrate');
+            hasCelebrated = false;
+            isLocked = false;
+            const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val); };
+            setText('scoreTotal', 0);
+            setText('scoreRows', 0);
+            setText('scoreCols', 0);
+            setText('scoreDiags', 0);
+            currentSize = size;
+            // reset crossed sequence panel
+            crossedSequence = [];
+            updateCrossedPanelUI();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const confirmBackdrop = document.getElementById('confirmBackdrop');
+            const confirmOk = document.getElementById('confirmOk');
+            const confirmCancel = document.getElementById('confirmCancel');
+            const confirmTitle = document.getElementById('confirmTitle');
+            const confirmMessage = document.getElementById('confirmMessage');
+            let onConfirmCb = null;
+            let onCancelCb = null;
+            const openConfirm = (title, message, onConfirm, onCancel) => {
+                confirmTitle.textContent = title;
+                confirmMessage.textContent = message;
+                onConfirmCb = onConfirm || null;
+                onCancelCb = onCancel || null;
+                confirmBackdrop.classList.add('show');
+                confirmBackdrop.setAttribute('aria-hidden', 'false');
+            };
+            // expose globally for cell click usage after BINGO
+            window.openConfirmModal = openConfirm;
+            const closeConfirmOnly = () => {
+                confirmBackdrop.classList.remove('show');
+                confirmBackdrop.setAttribute('aria-hidden', 'true');
+            };
+            const handleCancel = () => {
+                closeConfirmOnly();
+                if (typeof onCancelCb === 'function') onCancelCb();
+                onConfirmCb = null; onCancelCb = null;
+            };
+            const handleConfirm = () => {
+                closeConfirmOnly();
+                if (typeof onConfirmCb === 'function') onConfirmCb();
+                onConfirmCb = null; onCancelCb = null;
+            };
+            document.getElementById('shuffleBtn').addEventListener('click', () => {
+                const anyCrossed = !!document.querySelector('#grid td.crossed');
+                if (isLocked) {
+                    // After BINGO, shuffle immediately without confirmation
+                    generateAndDisplay();
+                } else if (anyCrossed) {
+                    openConfirm('Shuffle numbers?', 'This will reset the grid and score.', () => generateAndDisplay());
+                } else {
+                    generateAndDisplay();
+                }
+            });
+            // Voice search handler
+            const voiceBtn = document.getElementById('voiceBtn');
+            const voiceLangSelect = document.getElementById('voiceLang');
+            const highlightFoundNumber = (targetNumber) => {
+                const cells = Array.from(document.querySelectorAll('#grid td'));
+                let found = false;
+                cells.forEach((td) => td.classList.remove('found'));
+                for (const td of cells) {
+                    if (parseInt(td.textContent, 10) === targetNumber) {
+                        td.classList.add('found');
+                        td.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    try { playChime(); } catch (_) {}
+                }
+                return found;
+            };
+            // Auto-detect EN/HI and run continuously
+            const extractNumberAndLang = (text) => {
+                if (!text) return { num: NaN, lang: null };
+                const normalized = String(text).toLowerCase().trim();
+                const devToAscii = { '०':'0','१':'1','२':'2','३':'3','४':'4','५':'5','६':'6','७':'7','८':'8','९':'9' };
+                const digitsOnly = normalized.replace(/[०-९]/g, ch => devToAscii[ch] || ch).replace(/[^0-9]/g, '');
+                const direct = parseInt(digitsOnly, 10);
+                if (!Number.isNaN(direct)) return { num: direct, lang: 'digits' };
+                const enMap = {
+                    zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
+                    ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19,
+                    twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90, hundred:100
+                };
+                const hiMap = {
+                    'शून्य':0,'सिफर':0,'ज़ीरो':0,'जीरो':0,
+                    'एक':1,'दो':2,'तीन':3,'चार':4,'पांच':5,'पाँच':5,'छह':6,'सात':7,'आठ':8,'नौ':9,
+                    'दस':10,'ग्यारह':11,'बारह':12,'तेरह':13,'चौदह':14,'पंद्रह':15,'सोलह':16,'सत्रह':17,'अठारह':18,'उन्नीस':19,
+                    'बीस':20,'तीस':30,'चालीस':40,'पचास':50,'साठ':60,'सत्तर':70,'अस्सी':80,'नब्बे':90,'सौ':100
+                };
+                const words = normalized.split(/\s+|-/);
+                // Try English
+                let sum = 0; let last = 0; let matched = false;
+                for (const w of words) {
+                    if (w === 'hundred') { if (last === 0) last = 1; last *= 100; matched = true; continue; }
+                    if (enMap[w] != null) { last += enMap[w]; matched = true; continue; }
+                }
+                sum += last;
+                if (matched) return { num: sum, lang: 'en' };
+                // Try Hindi
+                sum = 0; last = 0; matched = false;
+                for (const w of words) {
+                    if (w === 'सौ') { if (last === 0) last = 1; last *= 100; matched = true; continue; }
+                    if (hiMap[w] != null) { last += hiMap[w]; matched = true; continue; }
+                }
+                sum += last;
+                if (matched) return { num: sum, lang: 'hi' };
+                return { num: NaN, lang: null };
+            };
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            let voiceActive = false;
+            let currentRecognition = null;
+            const recognitionLangs = ['en-US', 'hi-IN'];
+            const isSecure = () => (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:');
+            let micPrimed = false;
+            const queryMicPermission = async () => {
+                try {
+                    if (!navigator.permissions || !navigator.permissions.query) return 'unknown';
+                    const res = await navigator.permissions.query({ name: 'microphone' });
+                    return res.state; // 'granted' | 'denied' | 'prompt'
+                } catch (_) { return 'unknown'; }
+            };
+            const ensureMicPermission = async () => {
+                if (micPrimed) return true;
+                // On file:// many browsers re-prompt each time; avoid extra priming and rely on SR prompt
+                if (location.protocol === 'file:') { micPrimed = true; return true; }
+                const state = await queryMicPermission();
+                if (state === 'granted') { micPrimed = true; return true; }
+                if (state === 'denied') { return false; }
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return true;
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    stream.getTracks().forEach(t => t.stop());
+                    micPrimed = true;
+                    return true;
+                } catch (_) { return false; }
+            };
+            const beginRecognition = (langIdx) => {
+                if (!SpeechRecognition) return;
+                if (!voiceActive) return;
+                const sr = new SpeechRecognition();
+                currentRecognition = sr;
+                const lang = recognitionLangs[langIdx] || 'en-US';
+                sr.lang = lang;
+                sr.continuous = true;
+                sr.interimResults = true;
+                sr.maxAlternatives = 3;
+                voiceBtn.classList.add('listening');
+                voiceBtn.textContent = 'Listening…';
+                try { sr.start(); } catch (_) {}
+                sr.onresult = (ev) => {
+                    const transcript = Array.from(ev.results).map(r => r[0].transcript).join(' ').trim();
+                    const { num, lang: detected } = extractNumberAndLang(transcript);
+                    if (!Number.isNaN(num)) {
+                        highlightFoundNumber(num);
+                    }
+                };
+                sr.onerror = () => {
+                    setTimeout(() => { if (voiceActive) beginRecognition(langIdx); }, 250);
+                };
+                sr.onend = () => {
+                    voiceBtn.classList.toggle('listening', voiceActive);
+                    voiceBtn.textContent = voiceActive ? 'Listening…' : 'Voice Search';
+                    if (voiceActive) {
+                        const nextIdx = langIdx === 0 ? 1 : 0;
+                        setTimeout(() => beginRecognition(nextIdx), 80);
+                    }
+                };
+            };
+            const stopRecognition = () => {
+                voiceActive = false;
+                try { if (currentRecognition) currentRecognition.stop(); } catch (_) {}
+                voiceBtn.classList.remove('listening');
+                voiceBtn.textContent = 'Voice Search';
+                if (voiceLangSelect) { voiceLangSelect.disabled = false; voiceLangSelect.title = ''; }
+            };
+            const toggleVoiceSearch = () => {
+                if (!SpeechRecognition) {
+                    const typed = prompt('Voice not available. Enter a number to search / नंबर दर्ज करें:');
+                    const num = parseInt(typed, 10);
+                    if (!Number.isNaN(num)) highlightFoundNumber(num);
+                    return;
+                }
+                if (!isSecure()) {
+                    alert('Microphone requires HTTPS or a secure context. Please open over https or localhost.');
+                    return;
+                }
+                if (voiceActive) {
+                    stopRecognition();
+                } else {
+                    ensureMicPermission().then((ok) => {
+                        if (!ok) {
+                            alert('Microphone permission denied. Please allow mic access in browser settings.');
+                            return;
+                        }
+                        voiceActive = true;
+                        if (voiceLangSelect) { voiceLangSelect.disabled = true; voiceLangSelect.title = 'Language auto-detected (English/Hindi)'; }
+                        beginRecognition(0);
+                    });
+                }
+            };
+            if (voiceBtn) voiceBtn.addEventListener('click', toggleVoiceSearch);
+            confirmCancel.addEventListener('click', handleCancel);
+            confirmOk.addEventListener('click', handleConfirm);
+            confirmBackdrop.addEventListener('click', (e) => { if (e.target === confirmBackdrop) handleCancel(); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') handleCancel(); });
+            const inputEl = document.getElementById('sizeInput');
+            const hasAnyCrossed = () => !!document.querySelector('#grid td.crossed');
+            const maybeChangeSize = () => {
+                const newSize = getSizeFromInput();
+                if (newSize === currentSize) return; // no change
+                if (isLocked) {
+                    generateAndDisplay();
+                } else if (hasAnyCrossed()) {
+                    const prev = currentSize;
+                    openConfirm(
+                        'Change grid size?',
+                        'You have crossed numbers. Changing size will reset the grid and score.',
+                        () => generateAndDisplay(),
+                        () => { inputEl.value = String(prev); }
+                    );
+                } else {
+                    generateAndDisplay();
+                }
+            };
+            inputEl.addEventListener('change', maybeChangeSize);
+            inputEl.addEventListener('keyup', (ev) => { if (ev.key === 'Enter') maybeChangeSize(); });
+            // preload voices
+            if ('speechSynthesis' in window) {
+                initVoices();
+                window.speechSynthesis.onvoiceschanged = initVoices;
+            }
+            const bgSelect = document.getElementById('bgSelect');
+            const setTheme = (val) => {
+                const mode = val === 'dark' ? 'dark' : 'light';
+                document.body.classList.toggle('theme-dark', mode === 'dark');
+                document.body.classList.toggle('theme-light', mode === 'light');
+                localStorage.setItem('bingo-theme', mode);
+            };
+            const setFromHex = (hex) => {
+                const tmp = document.createElement('div');
+                tmp.style.color = hex;
+                document.body.appendChild(tmp);
+                const rgb = getComputedStyle(tmp).color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+                document.body.removeChild(tmp);
+                if (!rgb) return;
+                const r = parseInt(rgb[1], 10);
+                const g = parseInt(rgb[2], 10);
+                const b = parseInt(rgb[3], 10);
+                document.body.style.setProperty('--bg', hex);
+                document.body.style.setProperty('--bg-rgb', `${r}, ${g}, ${b}`);
+                // Determine brightness and set readable text/border colors
+                const yiq = (r * 299 + g * 587 + b * 114) / 1000; // 0-255
+                const isLight = yiq >= 180; // treat as light background
+                const text = isLight ? '#000000' : '#ffffff';
+                const muted = isLight ? '#444444' : '#cbd5e1';
+                const border = isLight ? '#000000' : '#ffffff';
+                document.body.style.setProperty('--text', text);
+                document.body.style.setProperty('--muted', muted);
+                document.body.style.setProperty('--border', border);
+                // Numbers should also be readable
+                if (isLight) {
+                    document.documentElement.style.setProperty('--numbers-color', '#000000');
+                } else {
+                    document.documentElement.style.removeProperty('--numbers-color');
+                }
+                // Toggle alternate styles based on background family
+                const greenish = (g > r + 20) && (g > b + 20);
+                const reddish = (r > g + 20) && (r > b + 20);
+                document.body.classList.toggle('green-bg', greenish);
+                document.body.classList.toggle('red-bg', reddish);
+                localStorage.setItem('bingo-bg-hex', hex);
+            };
+            const savedTheme = localStorage.getItem('bingo-theme') || 'light';
+            const savedHue = localStorage.getItem('bingo-hue') || '160';
+            const savedBgHex = localStorage.getItem('bingo-bg-hex');
+            setTheme(savedTheme);
+            if (savedBgHex) { setFromHex(savedBgHex); bgSelect.value = savedBgHex; }
+            bgSelect.addEventListener('change', () => setFromHex(bgSelect.value));
+            generateAndDisplay();
+        });
+    </script>
+</body>
+
+</html>
