@@ -1091,7 +1091,7 @@
             let voiceActive = false;
             let currentRecognition = null;
             const recognitionLangs = ['en-US'];
-            const isSecure = () => (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:');
+            const isSecure = () => (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
             let micPrimed = false;
             const queryMicPermission = async () => {
                 try {
@@ -1102,8 +1102,6 @@
             };
             const ensureMicPermission = async () => {
                 if (micPrimed) return true;
-                // On file:// many browsers re-prompt each time; avoid extra priming and rely on SR prompt
-                if (location.protocol === 'file:') { micPrimed = true; return true; }
                 const state = await queryMicPermission();
                 if (state === 'granted') { micPrimed = true; return true; }
                 if (state === 'denied') { return false; }
@@ -1115,20 +1113,16 @@
                     return true;
                 } catch (_) { return false; }
             };
-            const beginRecognition = (langIdx) => {
+            const beginRecognition = () => {
                 if (!SpeechRecognition) return;
                 if (!voiceActive) return;
-                const sr = new SpeechRecognition();
-                currentRecognition = sr;
-                const lang = 'en-US';
-                sr.lang = lang;
-                sr.continuous = true;
-                sr.interimResults = false; // rely on final results to reduce conflicts
-                sr.maxAlternatives = 3;
-                voiceBtn.classList.add('listening');
-                voiceBtn.textContent = 'Listening…';
-                try { sr.start(); } catch (_) {}
-                sr.onresult = (ev) => {
+                if (!currentRecognition) {
+                    currentRecognition = new SpeechRecognition();
+                    currentRecognition.lang = 'en-US';
+                    currentRecognition.continuous = true;
+                    currentRecognition.interimResults = false; // rely on final results to reduce conflicts
+                    currentRecognition.maxAlternatives = 2;
+                    currentRecognition.onresult = (ev) => {
                     // prefer only final result to avoid partial noise
                     const last = ev.results[ev.results.length - 1];
                     const transcript = last && last.isFinal ? last[0].transcript.trim() : '';
@@ -1137,18 +1131,21 @@
                         highlightFoundNumber(num);
                         try { speak(`Searching ${num}`, 1, 1.2, 'en-US'); } catch (_) {}
                     }
-                };
-                sr.onerror = () => {
-                    setTimeout(() => { if (voiceActive) beginRecognition(langIdx); }, 250);
-                };
-                sr.onend = () => {
-                    voiceBtn.classList.toggle('listening', voiceActive);
-                    voiceBtn.textContent = voiceActive ? 'Listening…' : 'Voice Search';
-                    if (voiceActive) {
-                        const nextIdx = langIdx === 0 ? 1 : 0;
-                        setTimeout(() => beginRecognition(nextIdx), 80);
-                    }
-                };
+                    };
+                    currentRecognition.onerror = () => {
+                        setTimeout(() => { if (voiceActive) { try { currentRecognition.start(); } catch (_) {} } }, 250);
+                    };
+                    currentRecognition.onend = () => {
+                        voiceBtn.classList.toggle('listening', voiceActive);
+                        voiceBtn.textContent = voiceActive ? 'Listening…' : 'Voice Search';
+                        if (voiceActive) {
+                            setTimeout(() => { try { currentRecognition.start(); } catch (_) {} }, 80);
+                        }
+                    };
+                }
+                voiceBtn.classList.add('listening');
+                voiceBtn.textContent = 'Listening…';
+                try { currentRecognition.start(); } catch (_) {}
             };
             const stopRecognition = () => {
                 voiceActive = false;
@@ -1176,7 +1173,7 @@
                             return;
                         }
                         voiceActive = true;
-                        beginRecognition(0);
+                        beginRecognition();
                     });
                 }
             };
