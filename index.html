@@ -51,6 +51,14 @@
             padding: 24px;
         }
 
+        /* Background image support */
+        body.has-bg-image {
+            background-color: var(--bg);
+            background-repeat: no-repeat;
+            background-size: cover;
+            background-position: center;
+        }
+
         .card {
             width: 100%;
             max-width: 560px;
@@ -61,12 +69,29 @@
             padding: 20px;
         }
 
+        /* When using background image, make the card surface solid to prevent image bleed-through */
+        body.has-bg-image .card {
+            background: linear-gradient(180deg, rgba(var(--bg-rgb), 0.96), rgba(var(--bg-rgb), 0.92));
+            backdrop-filter: blur(2px);
+        }
+
         .header {
             display: flex;
-            align-items: center;
-            justify-content: space-between;
+            align-items: flex-start;
+            justify-content: flex-start;
+            gap: 8px;
+            flex-wrap: wrap;
             margin-bottom: 16px;
         }
+        .header .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            flex-basis: 100%;
+            justify-content: flex-start;
+            margin-left: 0;
+        }
+        .header .actions button { white-space: nowrap; }
 
         h1 {
             font-size: 18px;
@@ -86,7 +111,15 @@
             align-items: center;
             gap: 8px;
             margin-top: 8px;
+            flex-basis: 100%;
+            flex-wrap: wrap;
         }
+
+        /* Prevent background image from showing inside form controls */
+        .controls input, .controls select, .controls button {
+            background-clip: padding-box;
+        }
+        .mpanel { flex-basis: 100%; }
 
         .controls label {
             font-size: 12px;
@@ -104,11 +137,24 @@
             font-weight: 700;
         }
 
+        .controls input[type="file"] {
+            padding: 4px 6px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+            font-weight: 600;
+            max-width: 220px;
+            width: 100%;
+        }
+
         .score {
             margin-top: 8px;
             font-weight: 700;
             color: var(--text);
         }
+        /* Keep score on its own row */
+        .header .score { flex-basis: 100%; }
 
         .score small {
             color: var(--muted);
@@ -544,6 +590,28 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.6; }
         }
+
+        /* Multiplayer panel */
+        .mpanel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            margin-top: 8px;
+        }
+        .mpanel input[type="text"] {
+            padding: 6px 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--bg);
+            color: var(--text);
+            font-weight: 600;
+        }
+        .mpanel .status {
+            font-size: 12px;
+            color: var(--muted);
+            margin-left: auto;
+        }
     </style>
 </head>
 
@@ -581,6 +649,16 @@
                         <option value="#c0c0c0">Silver</option>
                         <option value="#f5f5dc">Beige</option>
                     </select>
+                    <input id="bgImagePicker" type="file" accept="image/*" aria-label="Pick background image" />
+                    <button id="bgImageClear" type="button">Clear Image</button>
+                </div>
+                <div class="mpanel" aria-live="polite">
+                    <input id="mpName" type="text" placeholder="Your name" aria-label="Player name" />
+                    <input id="mpRoom" type="text" placeholder="Room code" aria-label="Room code" />
+                    <button id="mpCreate" type="button">Create</button>
+                    <button id="mpJoin" type="button">Join</button>
+                    <button id="mpLeave" type="button" disabled>Leave</button>
+                    <span id="mpStatus" class="status">Offline</span>
                 </div>
                 <div class="score" aria-live="polite">
                     Score: <span id="scoreTotal">0</span>
@@ -588,8 +666,10 @@
                             id="scoreDiags">0</span>)</small>
                 </div>
             </div>
-            <button id="shuffleBtn" type="button" aria-label="Shuffle numbers">Shuffle</button>
-            <button id="voiceBtn" type="button" aria-label="Voice search number">Voice Search</button>
+            <div class="actions">
+                <button id="shuffleBtn" type="button" aria-label="Shuffle numbers">Shuffle</button>
+                <button id="voiceBtn" type="button" aria-label="Voice search number">Voice Search</button>
+            </div>
         </div>
 
         <div class="grid-wrapper">
@@ -625,6 +705,8 @@
         let isLocked = false; // prevent further clicks after BINGO
         let currentSize = 5; // track current grid size
         let crossedSequence = []; // track crossed numbers in order
+        // Multiplayer state
+        let mp = { db: null, roomRef: null, playerId: null, roomCode: null, isHost: false, connected: false };
 
         function updateCrossedPanelUI() {
             const listEl = document.getElementById('crossedList');
@@ -999,6 +1081,8 @@
             // reset crossed sequence panel
             crossedSequence = [];
             updateCrossedPanelUI();
+            // Broadcast new grid if host
+            if (mp.connected && mp.isHost) try { mp.roomRef.child('grid').set({ size, numbers }); } catch (_) {}
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -1038,6 +1122,7 @@
                 if (isLocked) {
                     // After BINGO, shuffle immediately without confirmation
                     generateAndDisplay();
+                    if (mp.connected && mp.isHost) try { mp.roomRef.child('state').update({ locked: false }); } catch (_) {}
                 } else if (anyCrossed) {
                     openConfirm('Shuffle numbers?', 'This will reset the grid and score.', () => generateAndDisplay());
                 } else {
@@ -1240,6 +1325,8 @@
                 window.speechSynthesis.onvoiceschanged = initVoices;
             }
             const bgSelect = document.getElementById('bgSelect');
+            const bgImagePicker = document.getElementById('bgImagePicker');
+            const bgImageClear = document.getElementById('bgImageClear');
             const setTheme = (val) => {
                 const mode = val === 'dark' ? 'dark' : 'light';
                 document.body.classList.toggle('theme-dark', mode === 'dark');
@@ -1279,14 +1366,154 @@
                 document.body.classList.toggle('green-bg', greenish);
                 document.body.classList.toggle('red-bg', reddish);
                 localStorage.setItem('bingo-bg-hex', hex);
+                // If a solid color is chosen, clear image class
+                document.body.classList.remove('has-bg-image');
+                document.body.style.backgroundImage = '';
+                localStorage.removeItem('bingo-bg-image');
+            };
+            const setFromImage = (dataUrl) => {
+                if (!dataUrl) return;
+                document.body.classList.add('has-bg-image');
+                document.body.style.backgroundImage = `url(${dataUrl})`;
+                localStorage.setItem('bingo-bg-image', dataUrl);
+                // Ensure inputs remain readable against image
+                document.documentElement.style.setProperty('--numbers-color', '#000000');
             };
             const savedTheme = localStorage.getItem('bingo-theme') || 'light';
             const savedHue = localStorage.getItem('bingo-hue') || '160';
             const savedBgHex = localStorage.getItem('bingo-bg-hex');
+            const savedBgImage = localStorage.getItem('bingo-bg-image');
             setTheme(savedTheme);
-            if (savedBgHex) { setFromHex(savedBgHex); bgSelect.value = savedBgHex; }
+            if (savedBgImage) {
+                setFromImage(savedBgImage);
+            } else if (savedBgHex) {
+                setFromHex(savedBgHex); bgSelect.value = savedBgHex;
+            }
             bgSelect.addEventListener('change', () => setFromHex(bgSelect.value));
+            if (bgImagePicker) bgImagePicker.addEventListener('change', () => {
+                const file = bgImagePicker.files && bgImagePicker.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataUrl = String(reader.result || '');
+                    setFromImage(dataUrl);
+                };
+                reader.readAsDataURL(file);
+            });
+            if (bgImageClear) bgImageClear.addEventListener('click', () => {
+                localStorage.removeItem('bingo-bg-image');
+                document.body.classList.remove('has-bg-image');
+                document.body.style.backgroundImage = '';
+            });
             generateAndDisplay();
+
+            // Multiplayer wiring
+            const mpName = document.getElementById('mpName');
+            const mpRoom = document.getElementById('mpRoom');
+            const mpCreate = document.getElementById('mpCreate');
+            const mpJoin = document.getElementById('mpJoin');
+            const mpLeave = document.getElementById('mpLeave');
+            const mpStatus = document.getElementById('mpStatus');
+            const setMpStatus = (t) => { if (mpStatus) mpStatus.textContent = t; };
+            const ensureFirebase = async () => {
+                if (mp.db) return mp.db;
+                // Load Firebase SDK dynamically
+                const add = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+                // Use compat builds for simplicity
+                await add('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
+                await add('https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js');
+                let cfg = null;
+                try { cfg = JSON.parse(localStorage.getItem('bingo-fb-cfg') || 'null'); } catch (_) { cfg = null; }
+                if (!cfg) {
+                    const apiKey = prompt('Firebase apiKey'); if (!apiKey) return null;
+                    const authDomain = prompt('Firebase authDomain'); if (!authDomain) return null;
+                    const databaseURL = prompt('Firebase databaseURL'); if (!databaseURL) return null;
+                    const projectId = prompt('Firebase projectId') || '';
+                    const storageBucket = prompt('Firebase storageBucket') || '';
+                    const messagingSenderId = prompt('Firebase messagingSenderId') || '';
+                    const appId = prompt('Firebase appId') || '';
+                    cfg = { apiKey, authDomain, databaseURL, projectId, storageBucket, messagingSenderId, appId };
+                    localStorage.setItem('bingo-fb-cfg', JSON.stringify(cfg));
+                }
+                const app = firebase.initializeApp(cfg);
+                mp.db = firebase.database();
+                return mp.db;
+            };
+            const listenRoom = (code) => {
+                if (!mp.db) return;
+                const roomRef = mp.db.ref(`rooms/${code}`);
+                mp.roomRef = roomRef;
+                roomRef.child('grid').on('value', (snap) => {
+                    const g = snap.val();
+                    if (g && (!mp.isHost)) {
+                        const { size, numbers } = g;
+                        const table = document.getElementById('grid');
+                        renderGrid(table, numbers, size);
+                    }
+                });
+                roomRef.child('crossed').on('value', (snap) => {
+                    const map = snap.val() || {};
+                    // Clear and apply crossed from aggregated set
+                    document.querySelectorAll('#grid td').forEach(td => td.classList.remove('crossed'));
+                    Object.values(map).forEach((nums) => {
+                        if (!Array.isArray(nums)) return;
+                        const set = new Set(nums);
+                        document.querySelectorAll('#grid td').forEach(td => {
+                            const v = parseInt(td.textContent, 10);
+                            if (set.has(v)) td.classList.add('crossed');
+                        });
+                    });
+                    updateCompletedLines();
+                });
+                roomRef.child('state').on('value', (snap) => {
+                    const st = snap.val() || {};
+                    isLocked = !!st.locked;
+                    const overlay = document.getElementById('celebrate');
+                    const card = document.querySelector('.card');
+                    if (overlay && card) {
+                        if (isLocked) { overlay.classList.add('show'); card.classList.add('celebrate'); }
+                        else { overlay.classList.remove('show'); card.classList.remove('celebrate'); }
+                    }
+                });
+            };
+            const pushCrossedForPlayer = () => {
+                if (!mp.connected || !mp.roomRef) return;
+                const nums = Array.from(document.querySelectorAll('#grid td.crossed')).map(td => parseInt(td.textContent, 10));
+                mp.roomRef.child('crossed').child(mp.playerId).set(nums);
+            };
+            // Hook cell toggles to broadcast
+            const observer = new MutationObserver(() => { pushCrossedForPlayer(); });
+            observer.observe(document.getElementById('grid'), { subtree: true, attributes: true, attributeFilter: ['class'] });
+            // Multiplayer buttons
+            if (mpCreate) mpCreate.addEventListener('click', async () => {
+                if (!await ensureFirebase()) { alert('Firebase not configured'); return; }
+                const code = (mpRoom.value || Math.random().toString(36).slice(2, 7)).toLowerCase();
+                mp.playerId = Math.random().toString(36).slice(2, 9);
+                mp.roomCode = code; mp.isHost = true; mp.connected = true;
+                setMpStatus(`Room ${code} (Host)`);
+                mpLeave.disabled = false;
+                listenRoom(code);
+                // Initialize room grid from current
+                const size = getSizeFromInput();
+                const numbers = Array.from(document.querySelectorAll('#grid td')).map(td => parseInt(td.textContent, 10));
+                mp.roomRef.set({ grid: { size, numbers }, crossed: {}, state: { locked: false }, host: mp.playerId, name: mpName.value || 'Host' });
+            });
+            if (mpJoin) mpJoin.addEventListener('click', async () => {
+                if (!await ensureFirebase()) { alert('Firebase not configured'); return; }
+                const code = (mpRoom.value || '').toLowerCase(); if (!code) { alert('Enter room code'); return; }
+                mp.playerId = Math.random().toString(36).slice(2, 9);
+                mp.roomCode = code; mp.isHost = false; mp.connected = true;
+                setMpStatus(`Room ${code}`);
+                mpLeave.disabled = false;
+                listenRoom(code);
+                mp.roomRef.child('players').child(mp.playerId).set({ name: mpName.value || 'Player', ts: Date.now() });
+            });
+            if (mpLeave) mpLeave.addEventListener('click', () => {
+                if (!mp.connected) return;
+                try { if (mp.roomRef && mp.playerId) mp.roomRef.child('players').child(mp.playerId).remove(); } catch (_) {}
+                mp.connected = false; mp.isHost = false; mp.roomRef = null; mp.roomCode = null; mp.playerId = null;
+                setMpStatus('Offline'); mpLeave.disabled = true;
+            });
         });
     </script>
 </body>
